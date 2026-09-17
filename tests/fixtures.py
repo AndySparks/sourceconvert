@@ -717,3 +717,58 @@ def build_scanned_ocr_pdf(
     doc.save(str(out))
     doc.close()
     return out
+
+
+def build_striped_scan_pdf(
+    tmp_path: Path,
+    pages: int = 3,
+    strips: int = 21,
+    body: str = "The real sound of the cannon is the sensation it makes.",
+    name: str = "striped_scan.pdf",
+) -> Path:
+    """Build a scan whose page bitmap is SLICED into horizontal strips.
+
+    Acrobat Capture (and several journal-archive pipelines) store a page scan
+    as a stack of full-width bands rather than one image. Each band is a
+    legitimate raster region; none of them covers the page on its own, but
+    merged they are the page. A detector that tests the unmerged regions sees
+    no full-page bitmap and calls the book born-digital, while the extractor
+    -- which merges first -- splices the merged band over the whole page and
+    eats its text.
+    """
+    out = tmp_path / name
+    doc = fitz.open()
+    src = fitz.open()
+    tmp_page = src.new_page(width=100, height=16)
+    tmp_page.draw_rect(fitz.Rect(0, 0, 100, 16), color=(0.5, 0.5, 0.5),
+                       fill=(0.5, 0.5, 0.5))
+    png = tmp_page.get_pixmap(dpi=72).tobytes("png")
+    src.close()
+
+    width, height = 334.0, 559.0
+    band = height / strips
+    for i in range(pages):
+        page = doc.new_page(width=width, height=height)
+        for s in range(strips):
+            # keep_proportion=False: the band must span the FULL page width,
+            # the way a real capture's bands do. Letterboxed bands merge to a
+            # rect narrower than the page and the fixture stops reproducing
+            # the bug it exists for.
+            page.insert_image(
+                fitz.Rect(0, s * band, width, (s + 1) * band), stream=png,
+                keep_proportion=False,
+            )
+        page.insert_text((20, 20), str(36 + i))
+        page.insert_text((20, 60), f"{body} ({i})")
+        y = 90
+        for n in range(14):
+            page.insert_text(
+                (20, y),
+                f"line {n} of ordinary body prose running the measure of "
+                f"the page as scanned book text does",
+                fontsize=8,
+            )
+            y += 14
+    doc.save(str(out))
+    doc.close()
+    return out

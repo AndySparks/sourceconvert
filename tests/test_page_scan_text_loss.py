@@ -23,7 +23,11 @@ import fitz
 import pytest
 
 import assets
-from tests.fixtures import build_scanned_ocr_pdf, build_figure_pdf
+from tests.fixtures import (
+    build_scanned_ocr_pdf,
+    build_figure_pdf,
+    build_striped_scan_pdf,
+)
 
 
 def test_full_page_scan_is_not_reported_as_a_figure(tmp_path):
@@ -244,3 +248,59 @@ def test_extract_page_assets_survives_an_unreadable_image_table(tmp_path,
     extracted = assets.extract_page_assets(doc[0], "fig", tmp_path / "e", 1)
     doc.close()
     assert len(extracted) == 1
+
+
+def test_a_scan_sliced_into_strips_is_still_a_scan(tmp_path):
+    """A page bitmap stored as a stack of bands must still read as a scan.
+
+    2026-09-17. Sahlman (1990), 'The structure and governance of
+    venture-capital organizations' (Journal of Financial Economics 27,
+    473-521), came out of Acrobat 3.0 Capture with each page's scan stored as
+    21 full-width horizontal strips. `detect_page_scan_document` tested the
+    UNMERGED raster regions, so no single region covered the page and the
+    document was called born-digital; `extract_page_assets` then merged those
+    same strips into one page-covering region and the text splicer dropped the
+    text of 44 of 49 pages. Every gate was green: quality_score 1.0,
+    degenerate-text clean, 44/44 figures.
+
+    The two functions must test the same geometry.
+    """
+    pdf = build_striped_scan_pdf(tmp_path)
+    doc = fitz.open(str(pdf))
+    page = doc[0]
+    rasters = assets.find_raster_regions(page)
+    assert len(rasters) > 1, "fixture must store the page as several bands"
+    assert not any(assets._covers_page(r, page) for r in rasters), (
+        "fixture is only interesting while no SINGLE band covers the page"
+    )
+    merged = assets._merge_rects(rasters, gap=assets.REGION_PADDING)
+    assert any(assets._covers_page(r, page) for r in merged), (
+        "fixture is only interesting while the MERGED bands do cover the "
+        "page -- that asymmetry is the bug"
+    )
+    assert len(page.get_text().strip()) > 200, "fixture must carry a text layer"
+
+    assert assets.detect_page_scan_document(doc), (
+        "bands that merge to the whole page are the page's own bitmap"
+    )
+    extracted = assets.extract_page_assets(
+        page, "striped", tmp_path / "s", 1,
+        page_scan_document=assets.detect_page_scan_document(doc),
+    )
+    doc.close()
+    assert extracted == [], "a sliced page scan is the page, not a figure"
+
+
+def test_striped_scan_conversion_keeps_its_text(tmp_path):
+    """End to end on the striped shape: the prose survives."""
+    import convert
+
+    pdf = build_striped_scan_pdf(tmp_path, pages=5)
+    outdir = tmp_path / "out"
+    convert.convert_with_pymupdf(pdf, outdir, extract_images=True)
+    md = (outdir / f"{pdf.stem}.md").read_text()
+
+    assert md.count("cannon") == 5, (
+        f"expected 5 pages of body, got {md.count('cannon')}"
+    )
+    assert "Figure on page" not in md, "page scans must not be emitted as figures"

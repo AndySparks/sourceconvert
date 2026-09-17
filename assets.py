@@ -281,7 +281,14 @@ def detect_page_scan_document(doc) -> bool:
             page = doc[i]
             if _page_text_length(page) < PAGE_SCAN_MIN_TEXT_CHARS:
                 continue
-            rasters = find_raster_regions(page)
+            # Merge before testing coverage. `extract_page_assets` merges
+            # raster regions before it decides what to splice, so a detector
+            # that tests the UNMERGED regions is answering a different
+            # question than the extractor asks. Acrobat Capture stores a page
+            # scan as a stack of full-width bands; no band covers the page,
+            # the merge of them is the page. See
+            # test_a_scan_sliced_into_strips_is_still_a_scan.
+            rasters = _merge_rects(find_raster_regions(page), gap=REGION_PADDING)
             text_pages += 1
             if any(_covers_page(r, page) for r in rasters):
                 scanned += 1
