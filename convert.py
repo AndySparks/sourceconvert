@@ -369,9 +369,25 @@ _MARKDOWN_STRIP_RE = re.compile(
 # These are the specific extraction bugs we've seen in the wild from
 # PyMuPDF on PDFs with non-standard Type 3 fonts or custom encodings.
 # Density (matches per 10k chars) is the signal we gate on.
+# Digit-acronyms: real vocabulary shaped exactly like the artifact below,
+# where the digit is the word "to". These are REMOVED before counting rather
+# than excluded by narrowing the pattern, because narrowing it to lowercase
+# would stop flagging genuine damage in headings and all-caps pages.
+#
+# Origin 2026-09-20: Gornall & Strebulaev's VC field experiment failed
+# conversion three nights running. The extraction was perfect -- 156,679 clean
+# characters off a born-digital pdfTeX file -- but the paper says "B2B" or
+# "B2C" 37 times, every one a letter-digit-letter match under IGNORECASE.
+# Score 0.00, hard fail, and the failure told the operator to re-run it
+# through OCR, which would have degraded a clean text layer for no reason.
+_DIGIT_ACRONYM_RE = re.compile(
+    r'\b(?:b2b|b2c|b2g|c2c|d2c|m2m|o2o|p2p)\b', re.IGNORECASE
+)
+
 _ARTIFACT_PATTERNS = (
     # Letter-digit-letter: e.g. "managen1ent", "con1panies", "n1ethod".
-    # Legitimate English words never have this pattern.
+    # Legitimate English WORDS never have this pattern (acronyms do -- see
+    # _DIGIT_ACRONYM_RE, stripped before counting).
     re.compile(r'[a-z]\d[a-z]', re.IGNORECASE),
     # "vv" between letters: e.g. "hovvever", "vvriting", "vve".
     # Extraction substitutes "vv" for "w" when the PDF font lacks a ToUnicode
@@ -396,6 +412,11 @@ def _text_quality_score(text, min_chars=500):
     # character-count denominator with non-content chars.
     cleaned = _MARKDOWN_STRIP_RE.sub(' ', text)
     n_chars = len(cleaned)
+
+    # Remove digit-acronyms before counting artifacts, but AFTER measuring the
+    # denominator: they are real characters of real text, so they belong in
+    # n_chars. Only their contribution to the artifact NUMERATOR is wrong.
+    cleaned = _DIGIT_ACRONYM_RE.sub(' ', cleaned)
 
     # Too little text to judge -- refuse to flag.
     if n_chars < min_chars:
