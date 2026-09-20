@@ -87,3 +87,52 @@ def test_ocr_warnings_detect_rough_text():
 def test_ocr_warnings_empty_for_clean_text():
     clean = ("The organization is well-run and the leader is trusted. " * 30)
     assert convert._ocr_quality_warnings(clean) == []
+
+
+# --- digit-acronym false positives (2026-09-20) -----------------------------
+
+B2B_PAPER = """
+We study how venture capitalists evaluate startups. Firms were classified as
+B2B or B2C based on their stated customer. The B2B sample includes enterprise
+software, while the B2C sample covers consumer marketplaces. Angels in the B2B
+group responded at a higher rate than those in the B2C group, and the P2P
+lending startups drew the fewest responses of all. Across every specification
+the B2B and B2C coefficients are statistically indistinguishable from zero,
+which is the paper's central negative result about sorting on customer type.
+""" * 3
+
+
+MANGLED_ALL_CAPS = """
+THE ORGANI7ATION LEADERSH1P N1UST CONSIDER THE BEHAVI0R OF EN1PLOYEES
+ACROSS EVERY DEPARTN1ENT. A N1ANAGER VVHO UNDERSTANDS THE PEOP1E ON THE
+TEAN1 CAN BUI1D TRUST THROUGH C1EAR CON1N1UNICATION. PERFORN1ANCE IN1PROVES
+VVHEN VVORKERS FEE1 THEIR CONTRIBUTION1S ARE RECOGN1IZED AND THEIR IDEAS
+ARE TAKEN SERIOUS1Y BY THE EXECUTIVES. THIS PRINCIP1E APPEARS IN EVERY
+N1AJOR STUDY OF MANAGEN1ENT PRACTICE OVER THE PAST FIFTY YEARS.
+""" * 3
+
+
+def test_quality_digit_acronyms_are_not_artifacts():
+    """B2B/B2C/P2P are business vocabulary, not font-encoding damage.
+
+    Origin 2026-09-20: Gornall & Strebulaev's VC field experiment failed
+    conversion on three separate nights. The extraction was perfect -- 156,679
+    clean characters off a born-digital pdfTeX file -- but it says "B2B" or
+    "B2C" 37 times, every one of which matched the letter-digit-letter
+    artifact pattern under re.IGNORECASE. Score 0.00, hard fail, and the error
+    told the operator to re-run it through OCR, which would have degraded a
+    clean text layer.
+    """
+    score = convert._text_quality_score(B2B_PAPER)
+    assert score >= 0.7, f"Expected >=0.7 for a B2B/B2C paper, got {score:.3f}"
+
+
+def test_quality_still_catches_mangled_all_caps():
+    """The fix must not become "ignore uppercase".
+
+    Dropping re.IGNORECASE would fix the B2B case and silently stop flagging
+    mangled text in headings and all-caps pages. The exclusion is scoped to
+    known digit-acronym TOKENS, so genuine damage is still caught in any case.
+    """
+    score = convert._text_quality_score(MANGLED_ALL_CAPS)
+    assert score < 0.5, f"Expected <0.5 for all-caps mangled text, got {score:.3f}"
