@@ -65,7 +65,8 @@ echo "ok 5 - mixed diff without section fails"
 
 # 6. RED: wrong round counts — 1, 12, 2+, 2.5 (codex r1 P2 + r2 P2)
 for bad in \
-  '## AI review — rounds: 1, engine: codex, verdict: pass' \
+  '## AI review — rounds: 0, engine: codex, verdict: pass' \
+  '## AI review — rounds: 11, engine: codex, verdict: pass' \
   '## AI review — rounds: 12, engine: codex, verdict: pass' \
   '## AI review — rounds: 2+, engine: codex, verdict: pass' \
   '## AI review — rounds: 2.5, engine: codex, verdict: pass' \
@@ -75,7 +76,16 @@ for bad in \
     && fail "wrong round count passed: $bad"
   set -e
 done
-echo "ok 6 - rounds: 1 / 12 / 2+ / 2.5 / 2.foo all fail"
+echo "ok 6 - rounds: 0 / 11 / 12 / 2+ / 2.5 / 2.foo all fail"
+
+# 6b. GREEN: one round is the current ruling (Andy, 2026-09-01). The gate
+# demanded exactly 2 until this fix, which failed sourceconvert PR #59 --
+# a correctly reviewed PR -- while mc-wiki's copy of this same predicate had
+# already been updated. The ruling covers BOTH repos; only one gate knew.
+printf 'convert.py\n' \
+  | PR_BODY='## AI review — rounds: 1, engine: codex, verdict: pass' \
+    bash "$GUARD" >/dev/null || fail "rounds: 1 refused, but one round is the ruling"
+echo "ok 6b - rounds: 1 passes"
 
 # 7. GREEN: sentence-final "rounds: 2." is exactly two (codex round 2, P2)
 printf 'convert.py\n' \
@@ -217,4 +227,53 @@ printf 'convert.py\n' \
     "$GUARD" >/dev/null || fail "oversized body refused (plumbing killed the check?)"
 echo "ok 18 - oversized body (10k-line tail after the section) passes"
 
+
+# 19. GREEN: heading depth is cosmetic -- `### AI review` (H3) and `#### AI
+#     review` (H4) with all three fields pass. Ported from mc-wiki's copy of
+#     this predicate, which hit this as a recurring false-negative (#77
+#     there): a fully-reviewed PR rejected only because its section used
+#     ### to match its sibling ### blocks.
+printf 'convert.py\n' \
+  | PR_BODY='### AI review -- rounds: 1, engine: codex, verdict: pass' \
+    "$GUARD" >/dev/null || fail "H3 '### AI review' with all fields refused"
+printf 'convert.py\n' \
+  | PR_BODY='#### AI review -- rounds: 1, engine: codex, verdict: pass' \
+    "$GUARD" >/dev/null || fail "H4 '#### AI review' with all fields refused"
+echo "ok 19 - ### / #### AI review (deeper headings) with fields pass"
+
+# 20. RED: a same-or-shallower heading still closes the section, at ANY depth
+#     (the close must stay depth-aware, not just accept deeper openings).
+set +e
+printf 'convert.py\n' | PR_BODY='### AI review -- rounds: 1
+
+### Notes
+engine: codex, verdict: pass' "$GUARD" >/dev/null 2>&1 \
+  && fail "fields after a same-depth (###) closing heading passed"
+set -e
+set +e
+printf 'convert.py\n' | PR_BODY='### AI review -- rounds: 1
+
+## Notes
+engine: codex, verdict: pass' "$GUARD" >/dev/null 2>&1 \
+  && fail "fields after a shallower (##) closing heading passed"
+set -e
+echo "ok 20 - a same-or-shallower heading closes the section at any depth"
+
+# 21. GREEN: a DEEPER sub-heading does NOT close the section -- fields under a
+#     `#### round detail` inside a `### AI review` still count.
+printf 'convert.py\n' | PR_BODY='### AI review -- rounds: 1
+#### round detail
+engine: codex, verdict: pass' "$GUARD" >/dev/null \
+  || fail "a deeper sub-heading wrongly closed the section"
+echo "ok 21 - a deeper sub-heading stays inside the section"
+
 echo "PASS check-ai-review"
+
+# 22. RED: a heading with more than six hashes is not a real ATX heading
+#     (CommonMark caps at 6), so it must not open the AI-review section --
+#     codex round 2, P2, against the generalized /#+/ matcher.
+set +e
+printf 'convert.py\n' | PR_BODY='####### AI review -- rounds: 1, engine: codex, verdict: pass' \
+  "$GUARD" >/dev/null 2>&1 && fail "a seven-hash line was accepted as an AI-review heading"
+set -e
+echo "ok 22 - a heading with more than six hashes does not open the section"

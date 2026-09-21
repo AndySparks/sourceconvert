@@ -5,7 +5,10 @@
 # ~/.claude/CLAUDE.md § "Different-model review gate").
 #
 # PRs that touch anything beyond documentation get a different-model
-# review — exactly two rounds — recorded in the PR body as an
+# review — ONE round (Andy, 2026-09-01; two are still accepted, both for
+# PRs recorded before the change and for the cases the ruling says earn a
+# second look: a fix that is a NEW MECHANISM rather than a patch) —
+# recorded in the PR body as an
 # `## AI review` section. This script is the whole predicate; the workflow
 # (.github/workflows/ai-review-gate.yml) only feeds it.
 #
@@ -29,8 +32,8 @@
 #         .github/, output/, requirements — is mandatory-review.
 # Pass:   otherwise, when the body carries ONE `## AI review` section
 #         (heading to the next `## ` or EOF) and INSIDE that slice:
-#         "rounds: 2" (exactly 2 — 1, 12, 2+, 2.5 fail; sentence-final
-#         "2." passes), an engine with a real value, and a verdict with a
+#         "rounds: 1" or "rounds: 2" (0, 11, 12, 2+, 1.5, 2.5 fail;
+#         sentence-final "2." passes), an engine with a real value, and a verdict with a
 #         real value (a bare "engine: ," or "verdict:" fails; template
 #         text elsewhere in the body supplies nothing). Lenient on
 #         formatting, strict on those facts.
@@ -92,13 +95,17 @@ fi
 
 body="${PR_BODY-}"
 
-# Extract ONE section: the first `## AI review` heading through the line
-# before the next `## ` heading (or EOF). All field checks run inside this
+# Extract ONE section: the first `## AI review` heading (two OR MORE hashes —
+# `### AI review` is the same section, heading depth is cosmetic; mc-wiki's
+# copy of this predicate hit this as a recurring false-negative, a fully-
+# reviewed PR rejected only for using `###`) through the line before the
+# next heading of the SAME-OR-SHALLOWER depth (or EOF). A deeper sub-heading
+# (more hashes) stays inside the section. All field checks run inside this
 # slice, so stale template text elsewhere in the body supplies nothing —
 # and <!-- --> comment content (same-line spans AND multi-line blocks) is
-# stripped first, so a commented-out template supplies nothing either.
-# The opening heading is end-bounded ("## AI reviewer notes" must not open
-# it); the closing check accepts any whitespace after ## (tabs too). The
+# stripped first, so a commented-out template supplies nothing either. The
+# opening heading is end-bounded ("## AI reviewer notes" must not open it);
+# the closing check accepts any whitespace after the hashes (tabs too). The
 # awk never calls exit — an early exit would SIGPIPE its feeder under
 # pipefail on a large body (shell-cosmetic-measurement class), so it flags
 # `closed` and drains the rest of the input instead; here-strings replace
@@ -121,9 +128,18 @@ section=$(awk '
       if (e == 0) { $0 = substr($0, 1, s - 1); incomment = 1; break }
       $0 = substr($0, 1, s - 1) substr(rest, e + 3)
     }
-    if (insec && $0 ~ /^[[:space:]]*##[[:space:]]/) { closed = 1; next }
+    # CommonMark caps an ATX heading at 6 hashes; 7+ is plain paragraph text,
+    # not a heading of any depth (codex round 2, P2: the prior /#+/ match was
+    # unbounded, so "####### AI review" -- not a real heading -- opened the
+    # section anyway).
+    if (insec && $0 ~ /^[[:space:]]*#{1,6}[[:space:]]/) {
+      match($0, /#{1,6}/)        # leading hashes of THIS heading
+      if (RLENGTH <= depth) { closed = 1; next }   # same-or-shallower ends it
+    }
     if (insec) { print; next }
-    if (tolower($0) ~ /^[[:space:]]*##[[:space:]]+ai review([^[:alnum:]]|$)/) { insec = 1; print }
+    if (tolower($0) ~ /^[[:space:]]*#{2,6}[[:space:]]+ai review([^[:alnum:]]|$)/) {
+      insec = 1; match($0, /#{1,6}/); depth = RLENGTH; print
+    }
   }
 ' <<<"$body")
 
@@ -136,25 +152,27 @@ section=$(awk '
 # or end of line) — "2.5" and "2.foo" both fail.
 ok=true
 [ -n "$section" ] || ok=false
-grep -Eiq '(^|[^[:alnum:]_])rounds:[[:space:]]*2([[:space:],;)]|\.([[:space:]]|$)|$)'   <<<"$section" || ok=false
+grep -Eiq '(^|[^[:alnum:]_])rounds:[[:space:]]*[12]([[:space:],;)]|\.([[:space:]]|$)|$)' <<<"$section" || ok=false
 grep -Eiq '(^|[^[:alnum:]_])engine[:[:space:]][[:space:]]*[^,;[:space:]]*[[:alnum:]]'  <<<"$section" || ok=false
 grep -Eiq '(^|[^[:alnum:]_])verdict[:[:space:]][[:space:]]*[^,;[:space:]]*[[:alnum:]]' <<<"$section" || ok=false
 
 if [ "$ok" = true ]; then
-  echo "AI-review section found (rounds: 2 + engine + verdict recorded)."
+  echo "AI-review section found (rounds: 1 or 2 + engine + verdict recorded)."
   exit 0
 fi
 
 cat >&2 <<'EOF'
 FAIL: this PR touches conversion code or other non-docs paths, so its
 body must record the different-model review (Claude-built -> Codex
-reviews; Codex-built -> Claude reviews). Exactly two rounds: round 1
-finds, fix the actionables, round 2 verifies the fixes, then STOP.
+reviews; Codex-built -> Claude reviews). ONE round: round 1 finds, fix
+the actionables, merge. A second round only when the fix is a NEW
+MECHANISM rather than a patch (Andy, 2026-09-01 -- each round costs
+10-17 minutes of his wall clock).
 
 Add ONE section like this to the PR body — all three fields, with real
 values, inside the section itself:
 
-  ## AI review — rounds: 2, engine: codex, verdict: pass
+  ## AI review — rounds: 1, engine: codex, verdict: pass
 
 Docs-only PRs (every changed file *.md under docs/ or at the repo root,
 CLAUDE.md excluded) are exempt.
