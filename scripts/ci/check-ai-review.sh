@@ -5,7 +5,10 @@
 # ~/.claude/CLAUDE.md § "Different-model review gate").
 #
 # PRs that touch anything beyond documentation get a different-model
-# review — exactly two rounds — recorded in the PR body as an
+# review — ONE round (Andy, 2026-09-01; two are still accepted, both for
+# PRs recorded before the change and for the cases the ruling says earn a
+# second look: a fix that is a NEW MECHANISM rather than a patch) —
+# recorded in the PR body as an
 # `## AI review` section. This script is the whole predicate; the workflow
 # (.github/workflows/ai-review-gate.yml) only feeds it.
 #
@@ -29,8 +32,8 @@
 #         .github/, output/, requirements — is mandatory-review.
 # Pass:   otherwise, when the body carries ONE `## AI review` section
 #         (heading to the next `## ` or EOF) and INSIDE that slice:
-#         "rounds: 2" (exactly 2 — 1, 12, 2+, 2.5 fail; sentence-final
-#         "2." passes), an engine with a real value, and a verdict with a
+#         "rounds: 1" or "rounds: 2" (0, 11, 12, 2+, 1.5, 2.5 fail;
+#         sentence-final "2." passes), an engine with a real value, and a verdict with a
 #         real value (a bare "engine: ," or "verdict:" fails; template
 #         text elsewhere in the body supplies nothing). Lenient on
 #         formatting, strict on those facts.
@@ -136,25 +139,27 @@ section=$(awk '
 # or end of line) — "2.5" and "2.foo" both fail.
 ok=true
 [ -n "$section" ] || ok=false
-grep -Eiq '(^|[^[:alnum:]_])rounds:[[:space:]]*2([[:space:],;)]|\.([[:space:]]|$)|$)'   <<<"$section" || ok=false
+grep -Eiq '(^|[^[:alnum:]_])rounds:[[:space:]]*[12]([[:space:],;)]|\.([[:space:]]|$)|$)' <<<"$section" || ok=false
 grep -Eiq '(^|[^[:alnum:]_])engine[:[:space:]][[:space:]]*[^,;[:space:]]*[[:alnum:]]'  <<<"$section" || ok=false
 grep -Eiq '(^|[^[:alnum:]_])verdict[:[:space:]][[:space:]]*[^,;[:space:]]*[[:alnum:]]' <<<"$section" || ok=false
 
 if [ "$ok" = true ]; then
-  echo "AI-review section found (rounds: 2 + engine + verdict recorded)."
+  echo "AI-review section found (rounds: 1 or 2 + engine + verdict recorded)."
   exit 0
 fi
 
 cat >&2 <<'EOF'
 FAIL: this PR touches conversion code or other non-docs paths, so its
 body must record the different-model review (Claude-built -> Codex
-reviews; Codex-built -> Claude reviews). Exactly two rounds: round 1
-finds, fix the actionables, round 2 verifies the fixes, then STOP.
+reviews; Codex-built -> Claude reviews). ONE round: round 1 finds, fix
+the actionables, merge. A second round only when the fix is a NEW
+MECHANISM rather than a patch (Andy, 2026-09-01 -- each round costs
+10-17 minutes of his wall clock).
 
 Add ONE section like this to the PR body — all three fields, with real
 values, inside the section itself:
 
-  ## AI review — rounds: 2, engine: codex, verdict: pass
+  ## AI review — rounds: 1, engine: codex, verdict: pass
 
 Docs-only PRs (every changed file *.md under docs/ or at the repo root,
 CLAUDE.md excluded) are exempt.

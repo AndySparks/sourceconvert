@@ -65,7 +65,8 @@ echo "ok 5 - mixed diff without section fails"
 
 # 6. RED: wrong round counts — 1, 12, 2+, 2.5 (codex r1 P2 + r2 P2)
 for bad in \
-  '## AI review — rounds: 1, engine: codex, verdict: pass' \
+  '## AI review — rounds: 0, engine: codex, verdict: pass' \
+  '## AI review — rounds: 11, engine: codex, verdict: pass' \
   '## AI review — rounds: 12, engine: codex, verdict: pass' \
   '## AI review — rounds: 2+, engine: codex, verdict: pass' \
   '## AI review — rounds: 2.5, engine: codex, verdict: pass' \
@@ -75,7 +76,16 @@ for bad in \
     && fail "wrong round count passed: $bad"
   set -e
 done
-echo "ok 6 - rounds: 1 / 12 / 2+ / 2.5 / 2.foo all fail"
+echo "ok 6 - rounds: 0 / 11 / 12 / 2+ / 2.5 / 2.foo all fail"
+
+# 6b. GREEN: one round is the current ruling (Andy, 2026-09-01). The gate
+# demanded exactly 2 until this fix, which failed sourceconvert PR #59 --
+# a correctly reviewed PR -- while mc-wiki's copy of this same predicate had
+# already been updated. The ruling covers BOTH repos; only one gate knew.
+printf 'convert.py\n' \
+  | PR_BODY='## AI review — rounds: 1, engine: codex, verdict: pass' \
+    bash "$GUARD" >/dev/null || fail "rounds: 1 refused, but one round is the ruling"
+echo "ok 6b - rounds: 1 passes"
 
 # 7. GREEN: sentence-final "rounds: 2." is exactly two (codex round 2, P2)
 printf 'convert.py\n' \
