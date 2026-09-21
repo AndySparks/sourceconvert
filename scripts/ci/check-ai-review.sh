@@ -95,13 +95,17 @@ fi
 
 body="${PR_BODY-}"
 
-# Extract ONE section: the first `## AI review` heading through the line
-# before the next `## ` heading (or EOF). All field checks run inside this
+# Extract ONE section: the first `## AI review` heading (two OR MORE hashes —
+# `### AI review` is the same section, heading depth is cosmetic; mc-wiki's
+# copy of this predicate hit this as a recurring false-negative, a fully-
+# reviewed PR rejected only for using `###`) through the line before the
+# next heading of the SAME-OR-SHALLOWER depth (or EOF). A deeper sub-heading
+# (more hashes) stays inside the section. All field checks run inside this
 # slice, so stale template text elsewhere in the body supplies nothing —
 # and <!-- --> comment content (same-line spans AND multi-line blocks) is
-# stripped first, so a commented-out template supplies nothing either.
-# The opening heading is end-bounded ("## AI reviewer notes" must not open
-# it); the closing check accepts any whitespace after ## (tabs too). The
+# stripped first, so a commented-out template supplies nothing either. The
+# opening heading is end-bounded ("## AI reviewer notes" must not open it);
+# the closing check accepts any whitespace after the hashes (tabs too). The
 # awk never calls exit — an early exit would SIGPIPE its feeder under
 # pipefail on a large body (shell-cosmetic-measurement class), so it flags
 # `closed` and drains the rest of the input instead; here-strings replace
@@ -124,9 +128,14 @@ section=$(awk '
       if (e == 0) { $0 = substr($0, 1, s - 1); incomment = 1; break }
       $0 = substr($0, 1, s - 1) substr(rest, e + 3)
     }
-    if (insec && $0 ~ /^[[:space:]]*##[[:space:]]/) { closed = 1; next }
+    if (insec && $0 ~ /^[[:space:]]*#+[[:space:]]/) {
+      match($0, /#+/)            # leading hashes of THIS heading
+      if (RLENGTH <= depth) { closed = 1; next }   # same-or-shallower ends it
+    }
     if (insec) { print; next }
-    if (tolower($0) ~ /^[[:space:]]*##[[:space:]]+ai review([^[:alnum:]]|$)/) { insec = 1; print }
+    if (tolower($0) ~ /^[[:space:]]*###*[[:space:]]+ai review([^[:alnum:]]|$)/) {
+      insec = 1; match($0, /#+/); depth = RLENGTH; print
+    }
   }
 ' <<<"$body")
 

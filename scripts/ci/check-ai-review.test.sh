@@ -227,4 +227,44 @@ printf 'convert.py\n' \
     "$GUARD" >/dev/null || fail "oversized body refused (plumbing killed the check?)"
 echo "ok 18 - oversized body (10k-line tail after the section) passes"
 
+
+# 19. GREEN: heading depth is cosmetic -- `### AI review` (H3) and `#### AI
+#     review` (H4) with all three fields pass. Ported from mc-wiki's copy of
+#     this predicate, which hit this as a recurring false-negative (#77
+#     there): a fully-reviewed PR rejected only because its section used
+#     ### to match its sibling ### blocks.
+printf 'convert.py\n' \
+  | PR_BODY='### AI review -- rounds: 1, engine: codex, verdict: pass' \
+    "$GUARD" >/dev/null || fail "H3 '### AI review' with all fields refused"
+printf 'convert.py\n' \
+  | PR_BODY='#### AI review -- rounds: 1, engine: codex, verdict: pass' \
+    "$GUARD" >/dev/null || fail "H4 '#### AI review' with all fields refused"
+echo "ok 19 - ### / #### AI review (deeper headings) with fields pass"
+
+# 20. RED: a same-or-shallower heading still closes the section, at ANY depth
+#     (the close must stay depth-aware, not just accept deeper openings).
+set +e
+printf 'convert.py\n' | PR_BODY='### AI review -- rounds: 1
+
+### Notes
+engine: codex, verdict: pass' "$GUARD" >/dev/null 2>&1 \
+  && fail "fields after a same-depth (###) closing heading passed"
+set -e
+set +e
+printf 'convert.py\n' | PR_BODY='### AI review -- rounds: 1
+
+## Notes
+engine: codex, verdict: pass' "$GUARD" >/dev/null 2>&1 \
+  && fail "fields after a shallower (##) closing heading passed"
+set -e
+echo "ok 20 - a same-or-shallower heading closes the section at any depth"
+
+# 21. GREEN: a DEEPER sub-heading does NOT close the section -- fields under a
+#     `#### round detail` inside a `### AI review` still count.
+printf 'convert.py\n' | PR_BODY='### AI review -- rounds: 1
+#### round detail
+engine: codex, verdict: pass' "$GUARD" >/dev/null \
+  || fail "a deeper sub-heading wrongly closed the section"
+echo "ok 21 - a deeper sub-heading stays inside the section"
+
 echo "PASS check-ai-review"
