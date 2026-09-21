@@ -268,3 +268,12 @@ engine: codex, verdict: pass' "$GUARD" >/dev/null \
 echo "ok 21 - a deeper sub-heading stays inside the section"
 
 echo "PASS check-ai-review"
+
+# 22. RED: a heading with more than six hashes is not a real ATX heading
+#     (CommonMark caps at 6), so it must not open the AI-review section --
+#     codex round 2, P2, against the generalized /#+/ matcher.
+set +e
+printf 'convert.py\n' | PR_BODY='####### AI review -- rounds: 1, engine: codex, verdict: pass' \
+  "$GUARD" >/dev/null 2>&1 && fail "a seven-hash line was accepted as an AI-review heading"
+set -e
+echo "ok 22 - a heading with more than six hashes does not open the section"

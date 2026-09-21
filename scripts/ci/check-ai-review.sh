@@ -128,13 +128,17 @@ section=$(awk '
       if (e == 0) { $0 = substr($0, 1, s - 1); incomment = 1; break }
       $0 = substr($0, 1, s - 1) substr(rest, e + 3)
     }
-    if (insec && $0 ~ /^[[:space:]]*#+[[:space:]]/) {
-      match($0, /#+/)            # leading hashes of THIS heading
+    # CommonMark caps an ATX heading at 6 hashes; 7+ is plain paragraph text,
+    # not a heading of any depth (codex round 2, P2: the prior /#+/ match was
+    # unbounded, so "####### AI review" -- not a real heading -- opened the
+    # section anyway).
+    if (insec && $0 ~ /^[[:space:]]*#{1,6}[[:space:]]/) {
+      match($0, /#{1,6}/)        # leading hashes of THIS heading
       if (RLENGTH <= depth) { closed = 1; next }   # same-or-shallower ends it
     }
     if (insec) { print; next }
-    if (tolower($0) ~ /^[[:space:]]*###*[[:space:]]+ai review([^[:alnum:]]|$)/) {
-      insec = 1; match($0, /#+/); depth = RLENGTH; print
+    if (tolower($0) ~ /^[[:space:]]*#{2,6}[[:space:]]+ai review([^[:alnum:]]|$)/) {
+      insec = 1; match($0, /#{1,6}/); depth = RLENGTH; print
     }
   }
 ' <<<"$body")
