@@ -251,7 +251,7 @@ def _stale_shebang(script_path):
 
 
 def _marker_available():
-    """Cheap check: is marker-pdf installed in the current interpreter?
+    """Cheap check: is a runnable `marker_single` binary reachable?
 
     Uses the same logic as `check_dependencies("marker")` but returns a
     bool instead of raising. Called by pick_ocr_backend to decide where

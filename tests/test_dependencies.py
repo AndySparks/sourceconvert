@@ -101,6 +101,7 @@ def test_check_dependencies_marker_accepts_binary_without_import(monkeypatch, tm
     convert.check_dependencies("marker")  # must not raise
 
 
+@pytest.mark.skipif(sys.version_info < (3, 10), reason="the 3.10 gate raises before the binary lookup")
 def test_check_dependencies_marker_still_fails_without_binary(monkeypatch, tmp_path):
     """The other half: no binary anywhere is still a DependencyError."""
     import shutil
