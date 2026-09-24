@@ -130,14 +130,13 @@ def check_dependencies(method):
         # convert_with_marker() can spawn it via plain subprocess.run.
         if marker_bin.exists() and marker_on_path is None:
             _os.environ["PATH"] = str(venv_bin) + _os.pathsep + _os.environ.get("PATH", "")
-        try:
-            import marker  # noqa: F401
-        except ImportError:
-            raise DependencyError(
-                "Missing dependency: marker-pdf is not importable in this "
-                "Python. Activate the marker venv (source .venv-marker/bin/activate) "
-                "or reinstall: pip install marker-pdf"
-            )
+        # No `import marker` here. convert_with_marker() only ever spawns the
+        # binary, so a runnable `marker_single` is the whole requirement --
+        # the same test _marker_available() applies. Requiring the import
+        # made the two disagree: ingest-batch.sh runs under `.venv` with
+        # `.venv-marker/bin` on PATH, pick_ocr_backend() chose marker, and
+        # this check then refused it, failing every --auto-ocr retry
+        # (2026-09-24, cong-xiao-2024 and hellmann-thiele-2015).
 
     elif method == "ocr":
         missing = []
