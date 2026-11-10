@@ -3596,6 +3596,32 @@ def warn_if_memory_is_tight(page_count=None):
     return free_gb
 
 
+MARKER_GUARDED = Path(__file__).resolve().parent / "marker_guarded.py"
+
+
+def marker_command():
+    """How to launch marker: marker_guarded.py under marker_single's own interpreter.
+
+    The interpreter is read from the shebang of the `marker_single` on PATH, so
+    it is exactly the environment marker_single would have run in. If that
+    cannot be read, plain `marker_single` is used and the reason printed: the
+    guard (dropping 0-pixel images, see marker_guarded.py) is lost, nothing else.
+    """
+    found = shutil.which("marker_single")
+    try:
+        if not found:
+            raise OSError("marker_single is not on PATH")
+        with open(found, "rb") as f:
+            first = f.readline().decode("utf-8", "replace").strip()
+        interp = first[2:].strip().split()[0] if first.startswith("#!") and first[2:].strip() else ""
+        if not interp or not os.path.isfile(interp) or not os.access(interp, os.X_OK):
+            raise OSError(f"no runnable interpreter in {found}'s shebang ({first!r})")
+        return [interp, str(MARKER_GUARDED)]
+    except OSError as e:
+        print(f"  marker guard unavailable ({e}); running marker_single directly")
+        return ["marker_single"]
+
+
 def convert_with_marker(pdf_path, output_dir, marker_args=None,
                         extract_images=True):
     """Convert a text-based PDF using Marker.
@@ -3643,7 +3669,7 @@ def convert_with_marker(pdf_path, output_dir, marker_args=None,
                     '    grep -rl "$OLD" .venv/bin .venv-marker/bin '
                     '| while read f; do sed -i "" "s|$OLD|$NEW|g" "$f"; done'
                 )
-        cmd = ["marker_single", str(pdf_path), "--output_dir", tmpdir]
+        cmd = [*marker_command(), str(pdf_path), "--output_dir", tmpdir]
         # Page-locator flags go on unconditionally: a source filed without a
         # citable address cannot be fixed later without reconverting, and
         # marker is the only backend that works on a scanned book.
