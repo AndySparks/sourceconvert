@@ -612,7 +612,7 @@ def patch_marker(monkeypatch, convert_module, **kwargs):
     """
     def fake_popen(cmd, *args, **popen_kwargs):
         out_dir = Path(cmd[cmd.index("--output_dir") + 1])
-        stem = Path(cmd[1]).stem
+        stem = Path(cmd[cmd.index("--output_dir") - 1]).stem   # the PDF precedes --output_dir
         opts = dict(kwargs)
         if "--disable_image_extraction" in cmd:
             opts["write_images"] = False
