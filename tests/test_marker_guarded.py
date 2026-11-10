@@ -53,8 +53,9 @@ def test_marker_command_runs_the_guard_under_marker_singles_interpreter(tmp_path
     assert convert.marker_command() == [sys.executable, str(ROOT / "marker_guarded.py")]
 
 
-def test_marker_command_falls_back_loudly_when_the_shebang_is_stale(tmp_path, monkeypatch, capsys):
-    _stub(tmp_path, monkeypatch, "#!/nowhere/python3.12")
+@pytest.mark.parametrize("shebang", ["#!/nowhere/python3.12", "#!/bin/sh", "#!/usr/bin/env python3", "no shebang"])
+def test_marker_command_falls_back_loudly_unless_it_names_a_python(tmp_path, monkeypatch, capsys, shebang):
+    _stub(tmp_path, monkeypatch, shebang)
     assert convert.marker_command() == ["marker_single"]
     assert "marker guard unavailable" in capsys.readouterr().out
 

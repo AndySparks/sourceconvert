@@ -3614,7 +3614,12 @@ def marker_command():
         with open(found, "rb") as f:
             first = f.readline().decode("utf-8", "replace").strip()
         interp = first[2:].strip().split()[0] if first.startswith("#!") and first[2:].strip() else ""
-        if not interp or not os.path.isfile(interp) or not os.access(interp, os.X_OK):
+        # Only a direct Python interpreter: a shell launcher (pip writes one for
+        # long or spaced paths) or `env python3` cannot run the guard file as
+        # given, so those keep plain marker_single.
+        if not os.path.basename(interp).startswith("python"):
+            raise OSError(f"{found}'s shebang does not name a Python interpreter ({first!r})")
+        if not os.path.isfile(interp) or not os.access(interp, os.X_OK):
             raise OSError(f"no runnable interpreter in {found}'s shebang ({first!r})")
         return [interp, str(MARKER_GUARDED)]
     except OSError as e:
